@@ -34,14 +34,16 @@ type
     ToolBar1: TToolBar;
     btnSaveToServer: TButton;
     btnAddEvent: TButton;
+    Layout1: TLayout;
+    btnDelete: TButton;
     procedure FormCreate(Sender: TObject);
     procedure FormDestroy(Sender: TObject);
-    procedure EventsListItemClick(const Sender: TObject;
-      const AItem: TListViewItem);
     procedure btnSaveToServerClick(Sender: TObject);
     procedure btnSaveClick(Sender: TObject);
     procedure btnCancelClick(Sender: TObject);
     procedure btnAddEventClick(Sender: TObject);
+    procedure EventsListChange(Sender: TObject);
+    procedure btnDeleteClick(Sender: TObject);
   private
     FEditedEvent: tplanningevent;
     { Déclarations privées }
@@ -64,7 +66,7 @@ implementation
 
 {$R *.fmx}
 
-uses uPlanningConsts;
+uses uPlanningConsts, FMX.DialogService;
 
 procedure TfrmMain.APIAfterSave;
 begin
@@ -96,7 +98,7 @@ procedure TfrmMain.initEventListItem(item: TListViewItem;
 begin
   item.Text := event.EventLabel;
   item.detail := event.EventType + ' | ' + event.EventStartDate + ' | ' +
-    event.EventStarttime;
+    event.EventStarttime + ' | ' + event.EventStoptime;
   item.Tagobject := event;
 end;
 
@@ -117,7 +119,7 @@ begin
     edtURL.Text := FEditedEvent.EventURL;
     edtStartDate.Text := FEditedEvent.EventStartDate;
     edtStartTime.Text := FEditedEvent.EventStarttime;
-    edtStopTime.Text := FEditedEvent.EventStopTime;
+    edtStopTime.Text := FEditedEvent.EventStoptime;
   end;
 end;
 
@@ -165,6 +167,30 @@ begin
   EditedEvent := nil;
 end;
 
+procedure TfrmMain.btnDeleteClick(Sender: TObject);
+begin
+  TDialogService.MessageDialog('Remove this event ?',
+    tmsgdlgtype.mtConfirmation, [tmsgdlgbtn.mbYes, tmsgdlgbtn.mbno],
+    tmsgdlgbtn.mbno, 0,
+    procedure(const AResult: TModalResult)
+    var
+      event: tplanningevent;
+    begin
+      if (AResult = mrYes) then
+      begin
+        if assigned(EditedEvent) then
+        begin
+          event := EditedEvent;
+          event.isDeleted := true;
+          if assigned(EventsList.Selected) and
+            ((EventsList.Selected.Tagobject as tplanningevent) = event) then
+            EventsList.Items.Delete(EventsList.ItemIndex);
+        end;
+        btnCancelClick(Sender);
+      end;
+    end);
+end;
+
 procedure TfrmMain.btnSaveClick(Sender: TObject);
 var
   event: tplanningevent;
@@ -183,7 +209,7 @@ begin
   event.EventURL := edtURL.Text;
   event.EventStartDate := edtStartDate.Text;
   event.EventStarttime := edtStartTime.Text;
-  event.EventStopTime := edtStopTime.Text;
+  event.EventStoptime := edtStopTime.Text;
 
   if assigned(EventsList.Selected) and (EventsList.Selected.Tagobject = event)
     and (EventsList.Selected is TListViewItem) then
@@ -203,13 +229,12 @@ begin
   Planning.Save;
 end;
 
-procedure TfrmMain.EventsListItemClick(const Sender: TObject;
-  const AItem: TListViewItem);
+procedure TfrmMain.EventsListChange(Sender: TObject);
 begin
-  if assigned(AItem) and assigned(AItem.Tagobject) and
-    (AItem.Tagobject is tplanningevent) then
+  if assigned(EventsList.Selected) and assigned(EventsList.Selected.Tagobject)
+    and (EventsList.Selected.Tagobject is tplanningevent) then
   begin
-    EditedEvent := AItem.Tagobject as tplanningevent;
+    EditedEvent := EventsList.Selected.Tagobject as tplanningevent;
     EventArray.Visible := true;
   end;
 end;

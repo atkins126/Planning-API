@@ -1,3 +1,16 @@
+# 20220427
+* création d'une icône à partir du SVG https://stock.adobe.com/fr/images/calendar-event/499291756 grâce à Pic Mob Generator (https://gamolf.itch.io/pic-mob-generator)
+* ajout de l'icône pour le programme Delphi
+* mise à jour des informations de version (numéro build + package) dans le programme Delphi
+* ajout de l'heure de fin en consultation dans la liste des événements affichée à l'écran du programme Delphi de mise à jour
+* changer les infos lorsqu'on utilise le clavier pour se déplacer dans la liste
+* pouvoir supprimer des événements :
+=> modifier le programme client en ajoutant une option de suppression
+=> modifier l'API
+=> modifier le serveur pour prendre en charge la suppression
+* correction de messages d'erreur en cas de problème réseau sur l'envoi des modifications du client vers le serveur
+* ajout d'un contrôle de sécurité sur les ID des événements côté serveur afin de n'avoir que des caractères autorisés dans les ID qui servent aussi en noms de fichier (ajout FilterID() dans _functions.inc.php)
+
 # 20220405
 * débogage programme Delphi et corrections diverses
 * correction ordre des paramètres dans la vérification des checksum sur les endpoints de mise à jour (chanedevents.php et newevent.php)
