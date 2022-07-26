@@ -7,7 +7,8 @@ uses
   System.Variants,
   FMX.Types, FMX.Controls, FMX.Forms, FMX.Graphics, FMX.Dialogs, uPlanning,
   FMX.ListView.Types, FMX.ListView.Appearances, FMX.ListView.Adapters.Base,
-  FMX.Layouts, FMX.ListView, FMX.Controls.Presentation, FMX.StdCtrls, FMX.Edit;
+  FMX.Layouts, FMX.ListView, FMX.Controls.Presentation, FMX.StdCtrls, FMX.Edit,
+  FMX.Effects, FMX.EditBox, FMX.NumberBox;
 
 type
   TfrmMain = class(TForm)
@@ -36,6 +37,10 @@ type
     btnAddEvent: TButton;
     Layout1: TLayout;
     btnDelete: TButton;
+    btnSaveToServerGlowEffect: TGlowEffect;
+    CheckIfPlanningHasBeenSentToTheServer: TTimer;
+    lblOrder: TLabel;
+    edtOrder: TNumberBox;
     procedure FormCreate(Sender: TObject);
     procedure FormDestroy(Sender: TObject);
     procedure btnSaveToServerClick(Sender: TObject);
@@ -44,8 +49,11 @@ type
     procedure btnAddEventClick(Sender: TObject);
     procedure EventsListChange(Sender: TObject);
     procedure btnDeleteClick(Sender: TObject);
+    procedure CheckIfPlanningHasBeenSentToTheServerTimer(Sender: TObject);
+    procedure FormCloseQuery(Sender: TObject; var CanClose: Boolean);
   private
     FEditedEvent: tplanningevent;
+    FCloseWithoutSavingChanges: Boolean;
     { Déclarations privées }
     procedure APIErrorEvent(HTTPStatusCode: integer; ErrorText: string);
     procedure APISaveErrorEvent(HTTPStatusCode: integer; ErrorText: string);
@@ -79,13 +87,41 @@ begin
   showmessage(HTTPStatusCode.ToString + ' - ' + ErrorText);
 end;
 
+procedure TfrmMain.FormCloseQuery(Sender: TObject; var CanClose: Boolean);
+begin
+  if Planning.hasChanged and not FCloseWithoutSavingChanges then
+  begin
+    CanClose := false;
+    TDialogService.MessageDialog
+      ('Planning not saved. Do you want to close without saving its changes ?',
+      tmsgdlgtype.mtConfirmation, [tmsgdlgbtn.mbYes, tmsgdlgbtn.mbNo],
+      tmsgdlgbtn.mbNo, 0,
+      procedure(const AResult: TModalResult)
+      begin
+        if AResult = mryes then
+        begin
+          FCloseWithoutSavingChanges := true;
+          Close;
+        end
+        else
+          FCloseWithoutSavingChanges := false;
+      end);
+  end;
+end;
+
 procedure TfrmMain.FormCreate(Sender: TObject);
 begin
+  FCloseWithoutSavingChanges := false;
+  CheckIfPlanningHasBeenSentToTheServer.enabled := false;
+  btnSaveToServerGlowEffect.enabled := false;
   EventArray.Visible := false;
   UserArray.enabled := false;
   EditedEvent := nil;
   Planning := tplanning.CreateFromURL(CPlanningServerURL, APIReadyEvent,
     APIErrorEvent);
+
+  edtOrder.Min := low(integer);
+  edtOrder.Max := high(integer);
 end;
 
 procedure TfrmMain.FormDestroy(Sender: TObject);
@@ -94,7 +130,7 @@ begin
 end;
 
 procedure TfrmMain.initEventListItem(item: TListViewItem;
-  event: tplanningevent);
+event: tplanningevent);
 begin
   item.Text := event.EventLabel;
   item.detail := event.EventType + ' | ' + event.EventStartDate + ' | ' +
@@ -120,7 +156,10 @@ begin
     edtStartDate.Text := FEditedEvent.EventStartDate;
     edtStartTime.Text := FEditedEvent.EventStarttime;
     edtStopTime.Text := FEditedEvent.EventStoptime;
-  end;
+    edtOrder.Value := FEditedEvent.EventOrder;
+  end
+  else
+    EventsList.Selected := nil;
 end;
 
 procedure TfrmMain.APIReadyEvent;
@@ -132,6 +171,7 @@ begin
   showmessage('Chargement terminé. ' + Planning.Count.ToString +
     ' événements dans le planning');
 {$ENDIF}
+  Planning.SortPlanningEvents;
   EventsList.Items.Clear;
   for i := 0 to Planning.Count - 1 do
     initEventListItem(EventsList.Items.Add, Planning[i]);
@@ -140,7 +180,7 @@ begin
 end;
 
 procedure TfrmMain.APISaveErrorEvent(HTTPStatusCode: integer;
-  ErrorText: string);
+ErrorText: string);
 begin
   APIErrorEvent(HTTPStatusCode, ErrorText);
   // TODO : débloquer champs de saisie une fois la fin de la sauvegarde
@@ -157,6 +197,7 @@ begin
   edtStartDate.Text := '';
   edtStartTime.Text := '';
   edtStopTime.Text := '';
+  edtOrder.Value := -1;
 
   EventArray.Visible := true;
 end;
@@ -170,13 +211,13 @@ end;
 procedure TfrmMain.btnDeleteClick(Sender: TObject);
 begin
   TDialogService.MessageDialog('Remove this event ?',
-    tmsgdlgtype.mtConfirmation, [tmsgdlgbtn.mbYes, tmsgdlgbtn.mbno],
-    tmsgdlgbtn.mbno, 0,
+    tmsgdlgtype.mtConfirmation, [tmsgdlgbtn.mbYes, tmsgdlgbtn.mbNo],
+    tmsgdlgbtn.mbNo, 0,
     procedure(const AResult: TModalResult)
     var
       event: tplanningevent;
     begin
-      if (AResult = mrYes) then
+      if (AResult = mryes) then
       begin
         if assigned(EditedEvent) then
         begin
@@ -188,6 +229,7 @@ begin
         end;
         btnCancelClick(Sender);
       end;
+      btnSaveToServerGlowEffect.enabled := Planning.hasChanged;
     end);
 end;
 
@@ -210,6 +252,7 @@ begin
   event.EventStartDate := edtStartDate.Text;
   event.EventStarttime := edtStartTime.Text;
   event.EventStoptime := edtStopTime.Text;
+  event.EventOrder := trunc(edtOrder.Value);
 
   if assigned(EventsList.Selected) and (EventsList.Selected.Tagobject = event)
     and (EventsList.Selected is TListViewItem) then
@@ -219,14 +262,30 @@ begin
 
   EventArray.Visible := false;
   EditedEvent := nil;
+
+  btnSaveToServerGlowEffect.enabled := Planning.hasChanged;
 end;
 
 procedure TfrmMain.btnSaveToServerClick(Sender: TObject);
 begin
+  btnSaveToServer.enabled := false;
+  CheckIfPlanningHasBeenSentToTheServer.enabled := true;
   Planning.onSaveError := APISaveErrorEvent;
   Planning.onAfterSave := APIAfterSave;
   // TODO : bloquer champs de saisie en attendant la fin de la sauvegarde
   Planning.Save;
+end;
+
+procedure TfrmMain.CheckIfPlanningHasBeenSentToTheServerTimer(Sender: TObject);
+begin
+  if (not Planning.hasChanged) then
+  begin
+    CheckIfPlanningHasBeenSentToTheServer.enabled := false;
+    btnSaveToServerGlowEffect.enabled := false;
+    btnSaveToServer.enabled := true;
+    if assigned(Planning.onAfterSave) then
+      Planning.onAfterSave;
+  end;
 end;
 
 procedure TfrmMain.EventsListChange(Sender: TObject);
@@ -244,5 +303,6 @@ initialization
 {$IFDEF DEBUG}
   ReportMemoryLeaksOnShutdown := true;
 {$ENDIF}
+TDialogService.PreferredMode := TDialogService.TPreferredMode.Async;
 
 end.
